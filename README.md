@@ -2,125 +2,225 @@
 
 A Flutter application that replicates a Daraz-style product listing experience, built as part of the ZaviSoft Flutter Developer hiring task.
 
+> ⚠️ **This is not a UI-focused project.**
+> The primary goal is demonstrating correct scroll architecture and gesture coordination using a single vertical scrollable.
+
+---
+
 ## ✨ Features
 
-- **Product Listing** — Fetches and displays products from the [FakeStore API](https://fakestoreapi.com/) in a responsive 2-column grid.
-- **Category Tabs** — Products are organized by category with a sticky, scrollable tab bar. Switch between categories by tapping a tab or swiping horizontally on the product grid.
-- **Collapsible Header** — A banner image and personalized greeting that collapses as you scroll down, with the tab bar pinning at the top.
-- **Pull-to-Refresh** — Swipe down from any category to reload all products.
-- **Firebase Authentication** — Email/password signup and login with Google Sign-In support.
-- **Reusable Widgets** — Common UI components (buttons, form fields, error boxes, product cards) are extracted into a shared widget library.
+### 🛍 Product Listing
+Fetches and displays products from the [FakeStore API](https://fakestoreapi.com/) in a responsive 2-column `SliverGrid`.
+
+### 📂 Category Tabs
+Products are grouped by category with a sticky Sliver-based tab bar.
+Categories can be switched by:
+- Tapping on a tab
+- Swiping horizontally on product cards
+
+### 🏷 Collapsible Header
+A `SliverAppBar`-based collapsible header containing:
+- Banner image
+- Personalized greeting with user profile
+
+The tab bar pins to the top once the header collapses.
+
+### 🔄 Pull-to-Refresh
+Refreshing works from any category.
+The `RefreshIndicator` wraps the root `CustomScrollView`, ensuring no additional scrollables are introduced.
+
+### 🔐 Firebase Authentication
+- Email/Password Sign-up & Login
+- Google Sign-In
+- Auth state–driven navigation
+
+### ♻️ Reusable Widgets
+Common components are extracted into reusable widgets:
+- Buttons
+- Form fields
+- Error boxes
+- Product cards
+
+---
 
 ## 🏗️ Architecture
 
-The project follows **MVVM (Model-View-ViewModel)** with clear separation of concerns:
+The project follows **MVVM (Model–View–ViewModel)** with clear separation of concerns.
 
 ```
 lib/
-├── main.dart                     # App entry point, Firebase init, Provider setup
-├── firebase_options.dart         # Firebase configuration
+├── main.dart
+├── firebase_options.dart
 │
 ├── models/
-│   └── models.dart               # User and Product data models
+│   └── models.dart
 │
 ├── services/
-│   └── api_service.dart          # HTTP client for FakeStore API
+│   └── api_service.dart
 │
 ├── viewmodels/
-│   ├── auth_viewmodel.dart       # Login, Signup, Google Sign-In, auth state
-│   ├── home_viewmodel.dart       # Product fetching, category extraction
-│   └── gesture_viewmodel.dart    # Horizontal swipe gesture ownership
+│   ├── auth_viewmodel.dart
+│   ├── home_viewmodel.dart
+│   └── gesture_viewmodel.dart
 │
 └── ui/
     ├── screens/
-    │   ├── login_screen.dart     # Login page
-    │   ├── signup_screen.dart    # Registration page
-    │   └── home_screen.dart      # Main product listing screen
+    │   ├── login_screen.dart
+    │   ├── signup_screen.dart
+    │   └── home_screen.dart
     │
     └── widgets/
-        ├── home_app_bar.dart           # Collapsible header with user profile
-        ├── category_tab_bar.dart       # Sticky category tabs
-        ├── product_card.dart           # Product grid item
-        ├── sliver_tab_bar_delegate.dart # SliverPersistentHeader delegate
-        ├── auth_heading.dart           # Auth screen title/subtitle
-        ├── app_text_form_field.dart    # Reusable text input with validation
-        ├── auth_error_box.dart         # Styled error message box
-        └── app_buttons.dart            # Primary and Google sign-in buttons
+        ├── home_app_bar.dart
+        ├── category_tab_bar.dart
+        ├── product_card.dart
+        ├── sliver_tab_bar_delegate.dart
+        ├── auth_heading.dart
+        ├── app_text_form_field.dart
+        ├── auth_error_box.dart
+        └── app_buttons.dart
 ```
 
-## 🔧 Scrolling & Gesture Design
+---
 
-### The Core Constraint: One Vertical Scrollable
+## 🔧 Scroll & Gesture Architecture *(Core Evaluation Section)*
 
-The entire home screen uses a **single `CustomScrollView`** as its only scrollable widget. There is no `NestedScrollView`, `TabBarView`, or `PageView` anywhere in the widget tree. This avoids the gesture conflicts, jittering, and scroll-jumping issues that come with nesting multiple scrollables.
+### The Core Constraint: Exactly One Vertical Scrollable
 
-### How Horizontal Swiping Works
+The entire home screen is driven by a single `CustomScrollView`.
 
-Since we can't use `PageView` (it would introduce a second scrollable), horizontal category swiping is implemented **manually** through a dedicated `ScrollGestureViewModel`:
+There is:
+- ❌ No `NestedScrollView`
+- ❌ No `TabBarView`
+- ❌ No `PageView`
+- ❌ No inner `ListView`
 
-1. Each product card has a `GestureDetector` that captures `onHorizontalDragStart`, `onHorizontalDragUpdate`, and `onHorizontalDragEnd`.
-2. These raw drag signals are forwarded to `ScrollGestureViewModel`, which tracks drag distance and determines whether a swipe threshold was crossed.
-3. On successful swipe, it triggers an `AnimationController` to smoothly animate the tab transition.
-4. The ViewModel notifies listeners, which causes the `SliverGrid` to rebuild with the new category's products.
+This guarantees:
+- One vertical scroll owner
+- No nested scroll conflicts
+- No scroll jitter
+- No scroll position resets
+- No duplicate gesture arenas
+
+Because the layout is entirely Sliver-based, switching categories does not recreate or replace the scrollable.
+Therefore, the vertical scroll offset remains intact across tab switches.
 
 ### Who Owns What
 
 | Concern | Owner |
 |---------|-------|
-| Vertical scroll | Root `CustomScrollView` (exclusively) |
-| Horizontal swipe | `ScrollGestureViewModel` (gesture state + animation) |
-| Tab state | `TabController` synced bidirectionally with `ScrollGestureViewModel` |
+| Vertical scroll | Root `CustomScrollView` (exclusive owner) |
+| Pull-to-refresh | `RefreshIndicator` wrapping the root scroll view |
+| Horizontal swipe logic | `ScrollGestureViewModel` |
+| Tab state | `TabController` (synced with gesture ViewModel) |
 | Product data | `HomeViewModel` |
-| Auth state | `AuthViewModel` |
+| Authentication | `AuthViewModel` |
 
-### Trade-offs
+> Vertical scroll ownership is **never shared**.
 
-1. **Swipe detection area** — Swiping only registers on product cards, not in the empty padding between them. A `RenderSliver`-based approach would capture all horizontal drags at the viewport level, but adds significant complexity.
-2. **Lazy rendering** — `SliverGrid` builds items lazily as they scroll into view, so whole-grid translation animations during mid-swipe are limited.
+---
+
+### 🖐 Horizontal Swipe Implementation
+
+Since using `PageView` or `TabBarView` would introduce an additional scrollable, horizontal swiping is implemented **manually**.
+
+**How it works:**
+
+1. Each product card is wrapped with a `GestureDetector`
+2. It captures `onHorizontalDragStart`, `onHorizontalDragUpdate`, `onHorizontalDragEnd`
+3. Drag distance is forwarded to `ScrollGestureViewModel`
+4. If a threshold is crossed:
+   - The `TabController` index changes
+   - An animation is triggered
+   - The `SliverGrid` rebuilds with the selected category
+
+**Why gestures are scoped to product cards:**
+
+Horizontal gestures are intentionally attached to product cards instead of the entire viewport to avoid intercepting vertical drag gestures at the root level.
+
+This prevents gesture arena conflicts between vertical scroll and horizontal swipe detection.
+Gesture ownership is explicit and predictable.
+
+---
+
+### 📌 Why `TabBarView` Was Avoided
+
+`TabBarView` internally introduces its own scrollable behavior.
+Using it would result in:
+- Competing vertical scroll contexts
+- Complex nested scroll coordination
+- Risk of scroll offset resets
+
+To maintain a strict single-scroll architecture, category switching is implemented via `TabController` state changes + `SliverGrid` rebuild.
+This keeps vertical scroll ownership centralized and stable.
+
+---
+
+## ⚖️ Trade-offs & Limitations
+
+**1️⃣ Swipe Detection Area**
+Swiping is detected only when dragging on product cards, not in empty grid padding.
+A viewport-level gesture detector (or custom `RenderSliver` solution) would capture all horizontal drags, but would significantly increase implementation complexity.
+
+**2️⃣ Global Scroll Offset**
+The vertical scroll offset is global across categories — scroll position is preserved across tab switches, but per-tab scroll memory is not implemented.
+This is an intentional trade-off to preserve architectural simplicity and single scroll ownership.
+
+**3️⃣ Grid Rebuild on Tab Switch**
+Switching categories rebuilds the `SliverGrid` instead of keeping multiple slivers alive.
+This reduces memory usage but does not support partial in-progress swipe animations across entire grids.
+
+---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-
 - Flutter 3.x or later
-- Firebase project configured (see below)
-- Android Studio or VS Code
+- Android Studio / VS Code
+- Firebase project configured
 
 ### Setup
 
 ```bash
-# Clone the repository
-git clone <repo-url>
+git clone https://github.com/NahidAlamRahat/ZaviSoft-Task.git
 cd zavisoft_task
-
-# Install dependencies
 flutter pub get
-
-# Run the app
 flutter run
 ```
 
 ### Firebase Configuration
+1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
+2. Add an Android app with package name `com.example.zavisoft_task`
+3. Add your SHA-1 fingerprint: `cd android && ./gradlew signingReport`
+4. Download `google-services.json` → place it in `android/app/`
+5. Enable **Email/Password** and **Google** sign-in under Authentication → Sign-in method
 
-This project uses Firebase for authentication. To set it up:
+---
 
-1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com).
-2. Add an Android app with package name `com.example.zavisoft_task`.
-3. Add your device's SHA-1 fingerprint (get it via `cd android && ./gradlew signingReport`).
-4. Download the generated `google-services.json` and place it in `android/app/`.
-5. Enable **Email/Password** and **Google** sign-in providers under Authentication → Sign-in method.
+## 🔥 Why This Architecture
+
+This implementation prioritizes:
+- Deterministic scroll ownership
+- Predictable gesture behavior
+- Clean separation of concerns
+- No fragile hacks, no magic numbers, no global scroll controllers
+
+The goal was not UI polish, but **architectural correctness and gesture coordination clarity**.
+
+---
 
 ## 📦 Dependencies
 
 | Package | Purpose |
 |---------|---------|
 | `firebase_core` | Firebase initialization |
-| `firebase_auth` | Email/password and Google authentication |
-| `google_sign_in` | Google Sign-In flow |
+| `firebase_auth` | Authentication |
+| `google_sign_in` | Google login |
 | `provider` | State management (MVVM) |
-| `http` | HTTP client for FakeStore API |
-| `cached_network_image` | Image caching and loading |
+| `http` | FakeStore API client |
+| `cached_network_image` | Image caching |
+
+---
 
 ## 📝 License
 
-This project was built as a hiring task submission for ZaviSoft.
+Built as a Flutter hiring task submission for ZaviSoft.
